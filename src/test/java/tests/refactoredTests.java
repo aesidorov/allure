@@ -1,5 +1,6 @@
 package tests;
 
+import io.qameta.allure.restassured.AllureRestAssured;
 import io.restassured.RestAssured;
 import io.restassured.common.mapper.TypeRef;
 import io.restassured.filter.log.RequestLoggingFilter;
@@ -8,6 +9,8 @@ import io.restassured.http.ContentType;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import tests.users.Address;
 import tests.users.Geolocation;
 import tests.users.Name;
@@ -23,7 +26,8 @@ public class refactoredTests {
     @BeforeAll
     public static void setUp() {
         RestAssured.baseURI = "https://fakestoreapi.com";
-        RestAssured.filters(new RequestLoggingFilter(), new ResponseLoggingFilter());
+        RestAssured.filters(new RequestLoggingFilter(), new ResponseLoggingFilter(),
+        new AllureRestAssured());
     }
 
     @Test
@@ -47,10 +51,10 @@ public class refactoredTests {
         return response;
     }
 
-    @Test
-    public void getUsersLimit() {
-        int limit = 3;
-        List<StructResponseUser> users = given().queryParam("limit", limit)
+    @ParameterizedTest
+    @ValueSource(ints = {0, 1, 10, 20})
+    public void getUsersLimit(int limitSize) {
+        List<StructResponseUser> users = given().queryParam("limit", limitSize)
                 .get("/users")
                 .then()
                 .statusCode(200)
@@ -58,11 +62,7 @@ public class refactoredTests {
                 });
 
 
-        Assertions.assertEquals(limit, users.size());
-
-
-// Чем отличается TypeRef от POJO класса?
-// Почему TypeRef хоть и абстрактный класс, но его не нужно нигде в виде класса инициализировать?
+        Assertions.assertEquals(limitSize, users.size());
     }
 
     @Test
@@ -121,8 +121,6 @@ public class refactoredTests {
 
         Assertions.assertNotEquals(oldPassword, updatedUser.getPassword());
     }
-//Нужно ли в тесте выше использовать переменную "oldPassword" или это излишне?
-//Как влияет использование переменных или методы которыми можно достать данные из класса?
 
     private StructResponseUser getUserId() {
         Random random = new Random();
