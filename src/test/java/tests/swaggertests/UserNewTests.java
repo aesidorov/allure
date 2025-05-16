@@ -1,26 +1,19 @@
 package tests.swaggertests;
 
 import io.restassured.RestAssured;
-import io.restassured.common.mapper.TypeRef;
 import io.restassured.filter.log.RequestLoggingFilter;
 import io.restassured.filter.log.ResponseLoggingFilter;
-import io.restassured.http.ContentType;
 import models.swagger.FullUser;
-import models.swagger.Info;
-import models.swagger.JwtAuthData;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import service.UserService;
 
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Random;
 
 import static assertions.Conditions.hasMessage;
 import static assertions.Conditions.hasStatusCode;
-import static io.restassured.RestAssured.given;
 
 public class UserNewTests {
 
@@ -45,8 +38,8 @@ public class UserNewTests {
 
     private FullUser getAdminUser() {
         return FullUser.builder()
-                .login("Admin")
-                .pass("Admin")
+                .login("admin")
+                .pass("admin")
                 .build();
     }
 
@@ -90,6 +83,8 @@ public class UserNewTests {
     @Test
     public void positiveNewUserAuthTest() {
         FullUser user = getRandomUser();
+        userService.register(user);
+
         String token = userService.auth(user)
                 .should(hasStatusCode(200))
                 .asJwt();
@@ -117,12 +112,13 @@ public class UserNewTests {
 
     @Test
     public void negativeGetUserInfoWithoutJwtTest() {
-        userService.getUserInfo(null).should(hasStatusCode(401));
+        userService.getUserInfo().should(hasStatusCode(401));
     }
 
     @Test
     public void positiveUpdatePasswordTest() {
         FullUser user = getRandomUser();
+        String oldPass = user.getPass();
         userService.register(user);
 
         String token = userService.auth(user).asJwt();
@@ -138,88 +134,46 @@ public class UserNewTests {
 
         FullUser updUser = userService.getUserInfo(token).as(FullUser.class);
 
-        Assertions.assertNotEquals(user.getPass(), updUser.getPass());
+        Assertions.assertNotEquals(oldPass, updUser.getPass());
     }
 
     @Test
     public void negativeUpdateAdminPasswordTest() {
-        JwtAuthData authData = new JwtAuthData("admin", "admin");
-        String token = given().contentType(ContentType.JSON)
-                .body(authData)
-                .post("/api/login")
-                .then().statusCode(200)
-                .extract().jsonPath().getString("token");
-        Assertions.assertNotNull(token);
+        FullUser user = getAdminUser();
+        String token = userService.auth(user).asJwt();
 
-        Map<String, String> password = new HashMap<>();
-        String updatedPassword = "newPassword";
-        password.put("password", updatedPassword);
+        String updatedPassword = "newSome Pass";
 
-        Info infoUpdPassword = given().contentType(ContentType.JSON)
-                .auth().oauth2(token)
-                .body(password)
-                .put("/api/user")
-                .then().statusCode(400)
-                .extract().jsonPath().getObject("info", Info.class);
-        Assertions.assertEquals("Cant update base users", infoUpdPassword.getMessage());
+        userService.updatePass(updatedPassword, token)
+                .should(hasStatusCode(400))
+                .should(hasMessage("Cant update base users"));
     }
 
     @Test
     public void negativeDeleteAdminTest() {
-        JwtAuthData authData = new JwtAuthData("admin", "admin");
-        String token = given().contentType(ContentType.JSON)
-                .body(authData)
-                .post("/api/login")
-                .then().statusCode(200)
-                .extract().jsonPath().getString("token");
+        FullUser user = getAdminUser();
+        String token = userService.auth(user).asJwt();
 
-        Info infoDeleteAdmin = given()
-                .auth().oauth2(token)
-                .delete("/api/user")
-                .then().statusCode(400)
-                .extract().jsonPath().getObject("info", Info.class);
-
-        Assertions.assertEquals("Cant delete base users", infoDeleteAdmin.getMessage());
+        userService.deleteUser(token)
+                .should(hasStatusCode(400))
+                .should(hasMessage("Cant delete base users"));
     }
 
     @Test
     public void positiveDeleteUserTest() {
-        int randomNumber = Math.abs(random.nextInt());
-        FullUser user = FullUser.builder()
-                .login("loginTestUser" + randomNumber)
-                .pass("passTestUser")
-                .build();
-        Info info = given().contentType(ContentType.JSON)
-                .body(user)
-                .post("/api/signup")
-                .then().statusCode(201)
-                .extract().jsonPath().getObject("info", Info.class);
-        Assertions.assertEquals("User created", info.getMessage());
+        FullUser user = getRandomUser();
+        userService.register(user);
 
-        JwtAuthData authData = new JwtAuthData(user.getLogin(), user.getPass());
-        String token = given().contentType(ContentType.JSON)
-                .body(authData)
-                .post("/api/login")
-                .then().statusCode(200)
-                .extract().jsonPath().getString("token");
-        Assertions.assertNotNull(token);
+        String token = userService.auth(user).asJwt();
 
-        Info infoDeleteUser = given()
-                .auth().oauth2(token)
-                .delete("/api/user")
-                .then().statusCode(200)
-                .extract().jsonPath().getObject("info", Info.class);
-
-        Assertions.assertEquals("User successfully deleted", infoDeleteUser.getMessage());
+        userService.deleteUser(token)
+                .should(hasStatusCode(200))
+                .should(hasMessage("User successfully deleted"));
     }
 
     @Test
     public void positiveGetUserLoginTest() {
-        List<String> users = given().get("/api/users")
-                .then().statusCode(200)
-                .extract().as(new TypeRef<List<String>>() {
-                });
-
+        List<String> users = userService.getAllUsers().asList(String.class);
         Assertions.assertTrue(users.size() >= 3);
     }
 }
