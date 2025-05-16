@@ -1,10 +1,5 @@
 package tests.swaggertests;
 
-import assertions.AssertableResponse;
-import assertions.Condition;
-import assertions.Conditions;
-import assertions.conditions.GenericAssertableResponse;
-import assertions.conditions.MessageConditions;
 import io.restassured.RestAssured;
 import io.restassured.common.mapper.TypeRef;
 import io.restassured.filter.log.RequestLoggingFilter;
@@ -33,14 +28,14 @@ public class UserNewTests {
     private static UserService userService;
 
     @BeforeAll
-    public static void setUp(){
+    public static void setUp() {
         RestAssured.baseURI = "http://85.192.34.140:8080/api";
         RestAssured.filters(new RequestLoggingFilter(), new ResponseLoggingFilter());
         random = new Random();
         userService = new UserService();
     }
 
-    private FullUser getRandomUser(){
+    private FullUser getRandomUser() {
         int randomNumber = Math.abs(random.nextInt());
         return FullUser.builder()
                 .login("loginTestUser" + randomNumber)
@@ -48,8 +43,16 @@ public class UserNewTests {
                 .build();
     }
 
+    private FullUser getAdminUser() {
+        return FullUser.builder()
+                .login("Admin")
+                .pass("Admin")
+                .build();
+    }
+
+
     @Test
-    public void positiveRegisterTest(){
+    public void positiveRegisterTest() {
         FullUser user = getRandomUser();
         userService.register(user)
                 .should(hasStatusCode(201))
@@ -66,166 +69,80 @@ public class UserNewTests {
     }
 
     @Test
-    public void negativeRegisterNoPasswordTest(){
-        int randomNumber = Math.abs(random.nextInt());
-        FullUser user = FullUser.builder()
-                .login("loginTestUser" + randomNumber)
-                .build();
+    public void negativeRegisterNoPasswordTest() {
+        FullUser user = getRandomUser();
+        user.setPass(null);
 
-        Info errorInfo = given().contentType(ContentType.JSON)
-                .body(user)
-                .post("/api/signup")
-                .then().statusCode(400)
-                .extract().jsonPath().getObject("info", Info.class);
-
-        new AssertableResponse(given().contentType(ContentType.JSON)
-                .body(user)
-                .post("/api/signup")
-                .then()).should(hasMessage("Missing login or password"))
-                .should(hasStatusCode(400));
-
-        new GenericAssertableResponse<Info>(given().contentType(ContentType.JSON)
-                .body(user)
-                .post("/api/signup")
-                .then(), new TypeRef<Info>() {})
-                .should(hasMessage("Missing login or password"))
-                .should(hasStatusCode(400));
-
-        Assertions.assertEquals("Missing login or password", errorInfo.getMessage());
+        userService.register(user)
+                .should(hasStatusCode(400))
+                .should(hasMessage("Missing login or password"));
     }
 
     @Test
-    public void positiveAdminAuthTest(){
-        JwtAuthData authData = new JwtAuthData("admin", "admin");
-
-        String token = given().contentType(ContentType.JSON)
-                .body(authData)
-                .post("/api/login")
-                .then().statusCode(200)
-                .extract().jsonPath().getString("token");
-
+    public void positiveAdminAuthTest() {
+        FullUser user = getAdminUser();
+        String token = userService.auth(user)
+                .should(hasStatusCode(200))
+                .asJwt();
         Assertions.assertNotNull(token);
     }
 
     @Test
-    public void positiveNewUserAuthTest(){
-        int randomNumber = Math.abs(random.nextInt());
-        FullUser user = FullUser.builder()
-                .login("loginTestUser" + randomNumber)
-                .pass("passTestUser")
-                .build();
-        Info info = given().contentType(ContentType.JSON)
-                .body(user)
-                .post("/api/signup")
-                .then().statusCode(201)
-                .extract().jsonPath().getObject("info", Info.class);
-        Assertions.assertEquals("User created", info.getMessage());
-
-
-
-        JwtAuthData authData = new JwtAuthData(user.getLogin(), user.getPass());
-
-        String token = given().contentType(ContentType.JSON)
-                .body(authData)
-                .post("/api/login")
-                .then().statusCode(200)
-                .extract().jsonPath().getString("token");
-
+    public void positiveNewUserAuthTest() {
+        FullUser user = getRandomUser();
+        String token = userService.auth(user)
+                .should(hasStatusCode(200))
+                .asJwt();
         Assertions.assertNotNull(token);
     }
 
     @Test
-    public void negativeAuthTest(){
-        JwtAuthData authData = new JwtAuthData("skdhfshdfshd;fhsdf564657", "jsshdfjshgdjfhsglsdghfsdf6547");
-
-        given().contentType(ContentType.JSON)
-                .body(authData)
-                .post("/api/login")
-                .then().statusCode(401);
+    public void negativeAuthTest() {
+        FullUser user = getRandomUser();
+        userService.auth(user).should(hasStatusCode(401));
     }
 
     @Test
-    public void positiveUserGetInfoTest(){
-        JwtAuthData authData = new JwtAuthData("admin", "admin");
+    public void positiveUserGetInfoTest() {
+        FullUser user = getAdminUser();
+        String token = userService.auth(user).asJwt();
+        userService.getUserInfo(token).should(hasStatusCode(200));
 
-        String token = given().contentType(ContentType.JSON)
-                .body(authData)
-                .post("/api/login")
-                .then().statusCode(200)
-                .extract().jsonPath().getString("token");
-        Assertions.assertNotNull(token);
-
-        given().auth().oauth2(token)
-                .get("/api/user")
-                .then().statusCode(200);
     }
 
     @Test
-    public void negativeGetUserInfoInvalidJwtTest(){
-        given().auth().oauth2("some values")
-                .get("/api/user")
-                .then().statusCode(401);
+    public void negativeGetUserInfoInvalidJwtTest() {
+        userService.getUserInfo("some jwt").should(hasStatusCode(401));
     }
 
     @Test
-    public void negativeGetUserInfoWithoutJwtTest(){
-        given()
-                .get("/api/user")
-                .then().statusCode(401);
+    public void negativeGetUserInfoWithoutJwtTest() {
+        userService.getUserInfo(null).should(hasStatusCode(401));
     }
 
     @Test
-    public void positiveUpdatePasswordTest(){
-        int randomNumber = Math.abs(random.nextInt());
-        FullUser user = FullUser.builder()
-                .login("loginTestUser" + randomNumber)
-                .pass("passTestUser")
-                .build();
-        Info info = given().contentType(ContentType.JSON)
-                .body(user)
-                .post("/api/signup")
-                .then().statusCode(201)
-                .extract().jsonPath().getObject("info", Info.class);
-        Assertions.assertEquals("User created", info.getMessage());
+    public void positiveUpdatePasswordTest() {
+        FullUser user = getRandomUser();
+        userService.register(user);
 
-        JwtAuthData authData = new JwtAuthData(user.getLogin(), user.getPass());
+        String token = userService.auth(user).asJwt();
 
-        String token = given().contentType(ContentType.JSON)
-                .body(authData)
-                .post("/api/login")
-                .then().statusCode(200)
-                .extract().jsonPath().getString("token");
+        String updatedPassword = "some Pass";
 
-        Assertions.assertNotNull(token);
+        userService.updatePass(updatedPassword, token)
+                .should(hasStatusCode(200))
+                .should(hasMessage("User password successfully changed"));
 
-        Map<String, String> password = new HashMap<>();
-        String updatedPassword = "newPassword";
-        password.put("password", updatedPassword);
+        user.setPass(updatedPassword);
+        token = userService.auth(user).asJwt();
 
-        Info infoUpdPassword = given().contentType(ContentType.JSON)
-                .auth().oauth2(token)
-                .body(password)
-                .put("/api/user")
-                .then().extract().jsonPath().getObject("info", Info.class);
-        Assertions.assertEquals("User password successfully changed", infoUpdPassword.getMessage());
-
-        authData.setPassword(updatedPassword);
-        token = given().contentType(ContentType.JSON)
-                .body(authData)
-                .post("/api/login")
-                .then().statusCode(200)
-                .extract().jsonPath().getString("token");
-
-        FullUser updUser = given().auth().oauth2(token)
-                .get("/api/user")
-                .then().statusCode(200)
-                .extract().as(FullUser.class);
+        FullUser updUser = userService.getUserInfo(token).as(FullUser.class);
 
         Assertions.assertNotEquals(user.getPass(), updUser.getPass());
     }
 
     @Test
-    public void negativeUpdateAdminPasswordTest(){
+    public void negativeUpdateAdminPasswordTest() {
         JwtAuthData authData = new JwtAuthData("admin", "admin");
         String token = given().contentType(ContentType.JSON)
                 .body(authData)
@@ -248,7 +165,7 @@ public class UserNewTests {
     }
 
     @Test
-    public void negativeDeleteAdminTest(){
+    public void negativeDeleteAdminTest() {
         JwtAuthData authData = new JwtAuthData("admin", "admin");
         String token = given().contentType(ContentType.JSON)
                 .body(authData)
@@ -266,7 +183,7 @@ public class UserNewTests {
     }
 
     @Test
-    public void positiveDeleteUserTest(){
+    public void positiveDeleteUserTest() {
         int randomNumber = Math.abs(random.nextInt());
         FullUser user = FullUser.builder()
                 .login("loginTestUser" + randomNumber)
@@ -297,10 +214,11 @@ public class UserNewTests {
     }
 
     @Test
-    public void positiveGetUserLoginTest(){
+    public void positiveGetUserLoginTest() {
         List<String> users = given().get("/api/users")
                 .then().statusCode(200)
-                .extract().as(new TypeRef<List<String>>() {});
+                .extract().as(new TypeRef<List<String>>() {
+                });
 
         Assertions.assertTrue(users.size() >= 3);
     }
