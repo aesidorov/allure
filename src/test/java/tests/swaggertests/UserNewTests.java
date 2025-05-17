@@ -3,58 +3,69 @@ package tests.swaggertests;
 import io.restassured.RestAssured;
 import io.restassured.filter.log.RequestLoggingFilter;
 import io.restassured.filter.log.ResponseLoggingFilter;
+import io.restassured.response.Response;
 import models.swagger.FullUser;
+import models.swagger.Info;
+import org.assertj.core.api.SoftAssertions;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import service.UserService;
 
 import java.util.List;
-import java.util.Random;
 
 import static assertions.Conditions.hasMessage;
 import static assertions.Conditions.hasStatusCode;
+import static service.RandomTestData.*;
 
 public class UserNewTests {
 
-    private static Random random;
     private static UserService userService;
+    private FullUser user;
+
+    @BeforeEach
+    public void initTestUser(){
+        user = getRandomUser();
+    }
 
     @BeforeAll
     public static void setUp() {
         RestAssured.baseURI = "http://85.192.34.140:8080/api";
         RestAssured.filters(new RequestLoggingFilter(), new ResponseLoggingFilter());
-        random = new Random();
         userService = new UserService();
-    }
-
-    private FullUser getRandomUser() {
-        int randomNumber = Math.abs(random.nextInt());
-        return FullUser.builder()
-                .login("loginTestUser" + randomNumber)
-                .pass("passTestUser")
-                .build();
-    }
-
-    private FullUser getAdminUser() {
-        return FullUser.builder()
-                .login("admin")
-                .pass("admin")
-                .build();
     }
 
 
     @Test
     public void positiveRegisterTest() {
-        FullUser user = getRandomUser();
         userService.register(user)
                 .should(hasStatusCode(201))
                 .should(hasMessage("User created"));
     }
 
     @Test
+    public void positiveRegisterWithGamesTest() {
+        Response response = userService.register(user)
+                //.should(hasStatusCode(201))
+                //.should(hasMessage("User created"));
+                .asResponse();
+
+        Info info = response.jsonPath().getObject("info", Info.class);
+
+        SoftAssertions softAssertions = new SoftAssertions();
+        softAssertions.assertThat(response
+                .statusCode()).as("Статус код не совпадает")
+                .isEqualTo(201);
+
+        softAssertions.assertThat(info.getMessage()).as("Инфо не верная")
+                .isEqualTo("User created");
+
+        softAssertions.assertAll();
+    }
+
+    @Test
     public void negativeRegisterLoginExistTest() {
-        FullUser user = getRandomUser();
         userService.register(user);
         userService.register(user)
                 .should(hasStatusCode(400))
@@ -63,7 +74,6 @@ public class UserNewTests {
 
     @Test
     public void negativeRegisterNoPasswordTest() {
-        FullUser user = getRandomUser();
         user.setPass(null);
 
         userService.register(user)
@@ -82,7 +92,6 @@ public class UserNewTests {
 
     @Test
     public void positiveNewUserAuthTest() {
-        FullUser user = getRandomUser();
         userService.register(user);
 
         String token = userService.auth(user)
@@ -93,7 +102,6 @@ public class UserNewTests {
 
     @Test
     public void negativeAuthTest() {
-        FullUser user = getRandomUser();
         userService.auth(user).should(hasStatusCode(401));
     }
 
@@ -117,7 +125,6 @@ public class UserNewTests {
 
     @Test
     public void positiveUpdatePasswordTest() {
-        FullUser user = getRandomUser();
         String oldPass = user.getPass();
         userService.register(user);
 
@@ -161,7 +168,6 @@ public class UserNewTests {
 
     @Test
     public void positiveDeleteUserTest() {
-        FullUser user = getRandomUser();
         userService.register(user);
 
         String token = userService.auth(user).asJwt();
